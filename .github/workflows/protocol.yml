@@ -1,0 +1,18 @@
+name: Protocol
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  protocol:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.5'
+      - run: go test ./fuse -run '^TestProtocolServer' -count=1
+      - run: go vet ./fuse
+      - run: GOOS=freebsd CGO_ENABLED=0 go build ./fs/... ./example/loopback/...
