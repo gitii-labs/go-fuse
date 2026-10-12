@@ -75,7 +75,9 @@ type requestAlloc struct {
 	outDataInline [uintptr(outputDataSize)]byte
 
 	// Input, if small enough to fit here.
-	smallInputBuf [128]byte
+	// SETATTR is the largest fixed request: 128 bytes on Linux, 168 on
+	// Darwin. ProtocolServer parses fixed inputs directly from this buffer.
+	smallInputBuf [unsafe.Sizeof(SetAttrIn{})]byte
 
 	extInline requestExt
 }
