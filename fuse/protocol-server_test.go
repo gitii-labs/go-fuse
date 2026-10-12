@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"log"
 	"testing"
+	"unsafe"
 )
 
 func TestProtocolServerParse(t *testing.T) {
@@ -45,4 +46,44 @@ func TestProtocolServerParse(t *testing.T) {
 	if gotStatus != -int32(ENOSYS) {
 		t.Errorf("OutHeader.Status = %d, want %d", gotStatus, -int32(ENOSYS))
 	}
+}
+
+func TestProtocolServerParsesCompleteSetattr(t *testing.T) {
+	request := SetAttrIn{}
+	request.Length = uint32(unsafe.Sizeof(request))
+	request.Opcode = _OP_SETATTR
+	request.NodeId = FUSE_ROOT_ID
+	request.Unique = 71
+	request.Valid = FATTR_MODE | FATTR_SIZE
+	request.Mode = S_IFREG | 0600
+	request.Size = 4096
+	var input bytes.Buffer
+	if err := binary.Write(&input, binary.LittleEndian, request); err != nil {
+		t.Fatal(err)
+	}
+	filesystem := &setattrProtocolFS{RawFileSystem: NewDefaultRawFileSystem()}
+	server := NewProtocolServer(filesystem, &MountOptions{})
+	output := make([]byte, 4096)
+	n, status := server.HandleRequest([][]byte{input.Bytes()}, [][]byte{output})
+	if status != OK {
+		t.Fatalf("HandleRequest status = %v", status)
+	}
+	if !filesystem.called || filesystem.input.Valid != request.Valid || filesystem.input.Mode != request.Mode || filesystem.input.Size != request.Size {
+		t.Fatalf("SetAttr received %+v, called=%v; want %+v", filesystem.input, filesystem.called, request)
+	}
+	if n != int(sizeOfOutHeader) || int32(binary.LittleEndian.Uint32(output[4:8])) != -int32(EACCES) {
+		t.Fatalf("SetAttr reply = %x; want EACCES", output[:n])
+	}
+}
+
+type setattrProtocolFS struct {
+	RawFileSystem
+	called bool
+	input  SetAttrIn
+}
+
+func (fs *setattrProtocolFS) SetAttr(_ <-chan struct{}, input *SetAttrIn, _ *AttrOut) Status {
+	fs.called = true
+	fs.input = *input
+	return EACCES
 }
